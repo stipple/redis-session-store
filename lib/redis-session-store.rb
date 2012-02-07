@@ -12,7 +12,7 @@ require 'redis'
 #  :key_prefix  => Prefix for keys used in Redis, e.g. myapp-. Useful to separate session storage keys visibly from others
 #  :expire_after => A number in seconds to set the timeout interval for the session. Will map directly to expiry in Redis
 
-class RedisSessionStore < ActionController::Session::AbstractStore
+class RedisSessionStore < ActionDispatch::Session::AbstractStore
 
   def initialize(app, options = {})
     # Support old :expires option
@@ -28,12 +28,12 @@ class RedisSessionStore < ActionController::Session::AbstractStore
       :key_prefix => ""
     }.update(options)
 
-    @redis = Redis.new(@default_options)
+    @redis = options[:redis] || Redis.new(@default_options)
   end
 
   private
     def prefixed(sid)
-      "#{@default_options[:key_prefix]}#{sid}"
+      "#{@default_options[:key_prefix]}:#{sid}"
     end
     
     def get_session(env, sid)
@@ -47,18 +47,19 @@ class RedisSessionStore < ActionController::Session::AbstractStore
       [sid, session]
     end
 
-    def set_session(env, sid, session_data)
-      options = env['rack.session.options']
+    def set_session(env, sid, session_data, options)
+      options ||= env['rack.session.options']
       expiry  = options[:expire_after] || nil
       
-      @redis.pipelined do
+      if expiry
+        @redis.setex(prefixed(sid), expiry, Marshal.dump(session_data))
+      else
         @redis.set(prefixed(sid), Marshal.dump(session_data))
-        @redis.expire(prefixed(sid), expiry) if expiry
       end
         
-      return true
+      sid
     rescue Errno::ECONNREFUSED
-      return false
+      false
     end
   
 end
