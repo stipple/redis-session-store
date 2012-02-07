@@ -62,4 +62,10 @@ class RedisSessionStore < ActionDispatch::Session::AbstractStore
       false
     end
   
+
+    def destroy(env)
+      if sid = current_session_id(env)
+        @redis.del(prefixed(sid))
+      end
+    end
 end
